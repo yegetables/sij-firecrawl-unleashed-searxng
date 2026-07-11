@@ -108,7 +108,10 @@ const mockPreviewACUC: (
     planModifier: 0.1,
   },
   concurrency: is_extract ? 200 : 2,
-  flags: null,
+  flags:
+    process.env.IGNORE_ROBOTS_TXT === "true"
+      ? { ignoreRobots: "forced" }
+      : null,
   is_extract,
 });
 
@@ -148,9 +151,13 @@ const mockACUC: () => AuthCreditUsageChunk = () => ({
     planModifier: 0.1,
   },
   concurrency: 99999999,
-  flags: null,
+  flags:
+    process.env.IGNORE_ROBOTS_TXT === "true"
+      ? { ignoreRobots: "forced" }
+      : null,
   is_extract: false,
 });
+
 
 /**
  * Introspection response from the OAuth token endpoint.

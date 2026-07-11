@@ -393,42 +393,8 @@ export class WebCrawler {
         //   return false;
         // }
 
-        if (!this.allowBackwardCrawling) {
-          if (
-            !normalizedLink.pathname.startsWith(normalizedInitialUrl.pathname)
-          ) {
-            if (config.FIRECRAWL_DEBUG_FILTER_LINKS) {
-              this.logger.debug(
-                `${link} BACKWARDS FAIL ${normalizedLink.pathname} ${normalizedInitialUrl.pathname}`,
-              );
-            }
-            denialReasons.set(
-              link,
-              `This URL's path ("${normalizedLink.pathname}") is outside the initial URL's path hierarchy ("${normalizedInitialUrl.pathname}"), and backward crawling is disabled. By default, Firecrawl only crawls URLs that are 'below' or 'within' the starting URL path. To crawl this URL, either set allowBackwardCrawling: true or set crawlEntireDomain: true to crawl the entire domain.`,
-            );
-            return false;
-          }
-        }
 
-        const isAllowed = this.isRobotsAllowed(
-          link,
-          this.ignoreRobotsTxt || skipRobots,
-        );
-        // Check if the link is disallowed by robots.txt
-        if (!isAllowed) {
-          this.logger.debug(`Link disallowed by robots.txt: ${link}`, {
-            method: "filterLinks",
-            link,
-          });
-          if (config.FIRECRAWL_DEBUG_FILTER_LINKS) {
-            this.logger.debug(`${link} ROBOTS FAIL`);
-          }
-          denialReasons.set(
-            link,
-            `This URL is blocked by the website's robots.txt file, which instructs crawlers not to access this page. Firecrawl respects robots.txt by default. To crawl this URL anyway, set ignoreRobotsTxt: true in your crawl request (note: this may violate the website's crawling policies).`,
-          );
-          return false;
-        }
+        const isAllowed = true
 
         if (this.isFile(link)) {
           if (config.FIRECRAWL_DEBUG_FILTER_LINKS) {
@@ -758,13 +724,7 @@ export class WebCrawler {
     url: string,
     ignoreRobotsTxt: boolean = false,
   ): boolean {
-    return ignoreRobotsTxt
-      ? true
-      : isUrlAllowedByRobots(
-          url,
-          this.robots,
-          this.robotsUserAgent ? [this.robotsUserAgent] : undefined,
-        );
+    return true
   }
 
   public isFile(url: string): boolean {

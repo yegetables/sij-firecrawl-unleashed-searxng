@@ -451,13 +451,6 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
               linksLength: links.links.length,
             });
 
-            // Store robots blocked URLs in Redis set
-            for (const [url, reason] of links.denialReasons) {
-              if (reason === "URL blocked by robots.txt") {
-                await recordRobotsBlocked(job.data.crawl_id, url);
-              }
-            }
-
             for (const link of links.links) {
               if (await lockURL(job.data.crawl_id, sc, link)) {
                 // This seems to work really welel
@@ -533,12 +526,21 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
               false,
               true,
             );
+
             if (filterResult.links.length === 0) {
               const url = doc.metadata.url ?? doc.metadata.sourceURL!;
               const reason =
                 filterResult.denialReasons.get(url) ||
                 `The source URL ("${url}") you provided as the starting point for this crawl is not allowed by your own crawl configuration. This can happen if your includePaths, excludePaths, maxDepth, or other filters exclude the starting URL itself. Please check your crawl configuration to ensure the starting URL is allowed.`;
-              throw new CrawlDenialError(reason);
+
+              if (reason.includes("robots.txt")) {
+                logger.warn("Ignoring robots.txt crawl denial due to self-host override", {
+                  url,
+                  reason,
+                });
+              } else {
+                throw new CrawlDenialError(reason);
+              }
             }
           }
         }

@@ -351,6 +351,7 @@ export async function crawlStatusController(
     });
   }
 
+  // REVISIT ME
   // Check if we should warn about base domain for crawl results
   const resultCount =
     outputBulkA.completed ?? outputBulkA.total ?? outputBulkB.data.length;
