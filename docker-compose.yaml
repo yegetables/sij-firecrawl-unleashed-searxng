@@ -61,11 +61,26 @@ x-common-env: &common-env
   FDB_CLUSTER_FILE: ${NUQ_BACKEND:+/var/fdb/fdb.cluster}
 
 services:
+  firecrawl-ui:
+    image: obeoneorg/firecrawl-ui:latest   # or ghcr.io/obeone/firecrawl-ui:latest
+    ports:
+      - "8080:8080"
+    networks:
+      - backend
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+
   playwright-service:
     # NOTE: If you don't want to build the service locally,
     # comment out the build: statement and uncomment the image: statement
-    # image: ghcr.io/firecrawl/playwright-service:latest
     build: apps/playwright-service-ts
+    # image: ghcr.io/firecrawl/playwright-service:latest
+    # image: loorisr/patchright-scrape-api
     environment:
       PORT: 3000
       PROXY_SERVER: ${PROXY_SERVER}

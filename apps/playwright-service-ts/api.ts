@@ -1,15 +1,14 @@
 import express, { Request, Response } from 'express';
-import {
-  chromium,
+import type {
   Browser,
   BrowserContext,
   Route,
   Request as PlaywrightRequest,
   Page,
-} from 'playwright';
+} from 'playwright-core';
 import dotenv from 'dotenv';
-import UserAgent from 'user-agents';
-import { getError } from './helpers/get_error';
+// import { getError } from './helpers/get_error';
+import { getError } from './helpers/get_error.js';
 import { lookup } from 'dns/promises';
 import IPAddr from 'ipaddr.js';
 import { Server, RequestError } from 'proxy-chain';
@@ -187,17 +186,11 @@ interface UrlModel {
 let browser: Browser;
 
 const initializeBrowser = async () => {
-  browser = await chromium.launch({
+  const { launch } = await import('cloakbrowser');
+  browser = await launch({
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--disable-gpu',
-    ],
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    proxy: `http://127.0.0.1:${ssrfProxyPort}`,
   });
 };
 
@@ -208,22 +201,26 @@ const createContext = async (
   context: BrowserContext;
   securityState: ContextSecurityState;
 }> => {
-  const userAgent = userAgentOverride || new UserAgent().toString();
   const viewport = { width: 1280, height: 800 };
   const securityState: ContextSecurityState = {
     blockedNavigationRequestUrl: null,
   };
 
   const contextOptions: any = {
-    userAgent,
     viewport,
     ignoreHTTPSErrors: skipTlsVerification,
     serviceWorkers: 'block',
   };
 
-  contextOptions.proxy = {
-    server: `http://127.0.0.1:${ssrfProxyPort}`,
-  };
+  // Only set a custom UA if the caller explicitly provided one.
+  // Do NOT randomize — CloakBrowser's binary presents a coherent fingerprint;
+  // overlaying a random UA breaks that coherence and is a detection vector.
+  if (userAgentOverride) {
+    contextOptions.userAgent = userAgentOverride;
+  }
+
+  // Proxy is set at the browser (launch) level, not per-context.
+  // All contexts inherit the SSRF proxy from launch().
 
   const newContext = await browser.newContext(contextOptions);
 
@@ -236,7 +233,6 @@ const createContext = async (
     );
   }
 
-  // Intercept all requests to avoid loading ads
   await newContext.route(
     '**/*',
     async (route: Route, request: PlaywrightRequest) => {
@@ -308,7 +304,10 @@ const scrapePage = async (
   }
 
   if (waitAfterLoad > 0) {
-    await page.waitForTimeout(waitAfterLoad);
+    // Use native setTimeout instead of page.waitForTimeout().
+    // CloakBrowser docs: page.waitForTimeout() sends CDP protocol
+    // commands that reCAPTCHA detects. Native sleep is invisible.
+    await new Promise((r) => setTimeout(r, waitAfterLoad));
   }
 
   if (checkSelector) {
@@ -332,7 +331,7 @@ const scrapePage = async (
       (ct.toLowerCase().includes('application/json') ||
         ct.toLowerCase().includes('text/plain'))
     ) {
-      content = (await response.body()).toString('utf8'); // TODO: determine real encoding
+      content = (await response.body()).toString('utf8');
     }
   }
 
@@ -426,9 +425,6 @@ app.post('/scrape', async (req: Request, res: Response) => {
   let page: Page | null = null;
 
   try {
-    // Extract user-agent from request headers (case-insensitive) so it can
-    // be applied at the context level.  Playwright ignores user-agent in
-    // setExtraHTTPHeaders when the context already defines one (#2802).
     const userAgentOverride = headers
       ? Object.entries(headers).find(
           ([k]) => k.toLowerCase() === 'user-agent',
@@ -444,24 +440,10 @@ app.post('/scrape', async (req: Request, res: Response) => {
     page = await requestContext.newPage();
 
     if (headers) {
-      // A Cookie header passed through setExtraHTTPHeaders is sent on the first
-      // request but DROPPED on any redirect hop (the browser regenerates the
-      // redirected request from its cookie jar, which is empty). Authenticated
-      // sites that 302 (e.g. to /signin when the session looks absent) then
-      // land on the login page. Seed the cookie jar instead so Chromium re-sends
-      // it on every request, including redirects — matching what a raw HTTP
-      // client does.
       const cookieHeader = Object.entries(headers).find(
         ([k]) => k.toLowerCase() === 'cookie',
       )?.[1];
       if (cookieHeader) {
-        // Scope cookies to the registrable domain (e.g. ".example.com"), not
-        // host-only. Authenticated pages often 302 across sibling subdomains
-        // (example.com -> app.example.com); a host-only cookie set for the
-        // original host would not be sent to the redirect target, leaving the
-        // request unauthenticated. The Cookie header carries no domain info, so
-        // we apply the eTLD+1 — broad enough to follow the redirect, and these
-        // are first-party cookies being returned to their own origin anyway.
         let cookieDomain: string | undefined;
         try {
           const host = new URL(url).hostname;
@@ -500,8 +482,6 @@ app.post('/scrape', async (req: Request, res: Response) => {
         }
       }
 
-      // Remove user-agent (already applied at the context level) and cookie
-      // (now seeded into the jar) before forwarding the rest verbatim.
       const filteredHeaders = Object.fromEntries(
         Object.entries(headers).filter(([k]) => {
           const lower = k.toLowerCase();
