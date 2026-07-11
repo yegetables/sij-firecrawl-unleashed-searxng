@@ -62,6 +62,16 @@ export function getModel(name: string, provider: Provider = defaultProvider) {
   if (provider === "openai" && modelName.startsWith("o3-mini")) {
     return providerList.openai.chat(modelName);
   }
+  // Custom OpenAI-compatible baseURLs (OpenRouter, vLLM, etc.) — force Chat
+  // Completions, since Responses API support is inconsistent outside OpenAI's
+  // own endpoint.
+  if (
+    provider === "openai" &&
+    config.OPENAI_BASE_URL &&
+    config.OPENAI_BASE_URL !== "https://api.openai.com/v1"
+  ) {
+    return providerList.openai.chat(modelName);
+  }
   return providerList[provider](modelName);
 }
 
