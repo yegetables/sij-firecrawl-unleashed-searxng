@@ -1,13 +1,11 @@
 # Firecrawl Unleashed
 
-**An unofficial, self-host-first fork of Firecrawl with relaxed guardrails for operator-controlled deployments.**
-
-Informally: **Firecrawl, but with some hosted-product constraints loosened for local use.**
+**An unofficial Firecrawl fork for self-hosters who want more operator control: CloakBrowser instead of the stock browser path, and fewer upstream guardrails.**
 
 > [!WARNING]
 > This fork intentionally diverges from upstream Firecrawl behavior.
 >
-> It is **not affiliated with or endorsed by** Firecrawl or the Firecrawl team.
+> It is **not affiliated with, endorsed by, or supported by** Firecrawl or the Firecrawl team.
 >
 > If you want the official managed product, cloud-only capabilities, or upstream support guarantees, use the upstream project at [`firecrawl/firecrawl`](https://github.com/firecrawl/firecrawl) and the hosted service at [firecrawl.dev](https://firecrawl.dev).
 
@@ -15,42 +13,66 @@ Informally: **Firecrawl, but with some hosted-product constraints loosened for l
 
 ## What this repo is
 
-Firecrawl Unleashed starts from the upstream Firecrawl codebase and preserves the familiar **scrape / crawl / map / search** workflow where practical, but favors:
+Firecrawl Unleashed starts from the upstream Firecrawl codebase and preserves the familiar **scrape / crawl / map / search** workflow where practical, but is tuned for:
 
 - **self-hosting**
 - **operator control**
 - **local experimentation**
-- **more permissive defaults for authorized/private use cases**
+- **harder scraping targets**
+- **more permissive defaults for private or authorized use cases**
 
-This repository is best understood as an **operator-tuned Firecrawl fork**, not a promise of upstream parity.
+This fork keeps the Firecrawl API shape where possible, but makes different tradeoffs than upstream.
 
 ---
 
 ## Why this fork exists
 
 Upstream Firecrawl is built to serve both open-source users and a hosted product.  
-This fork exists for people who want a version that is easier to run locally and easier to adapt to their own environment.
+This fork exists for people who want a version that is easier to run locally, easier to patch, and less opinionated about what operators should or should not be allowed to do.
 
 Goals:
 
-- keep the Firecrawl API shape and ergonomics where possible
+- keep the Firecrawl API ergonomics where possible
 - reduce friction for private/self-hosted deployments
-- make local behavior easier to reason about and modify
+- improve the browser scraping stack for anti-bot-heavy targets
+- make local behavior easier to inspect and modify
 - allow more aggressive customization than upstream is likely to accept
 
 ---
 
-## What differs from upstream
+## Key differences from upstream
 
-Depending on the current patch set, this fork may differ from upstream in areas such as:
+This fork currently differs from upstream in several important ways:
 
-- crawl filtering behavior
-- robots handling
-- self-host auth / feature gating
-- browser-service behavior
-- bundled services in `docker-compose.yaml`
+- **Swapped the stock browser backend for CloakBrowser**
+- **Relaxed robots-related guardrails**
+- **Relaxed some self-host feature gating**
+- **Relaxed crawl path restrictions**
+- **Bundled a local web UI service**
+- **Prioritized operator control over upstream defaults**
 
-Upstream documentation is still a useful baseline, but **this fork can diverge materially** from upstream behavior.
+This means upstream documentation is still a useful baseline, but **behavior in this fork may differ materially from upstream Firecrawl**.
+
+---
+
+## Browser stack
+
+The browser microservice in this fork is built around **CloakBrowser**, rather than the stock upstream browser path.
+
+Why that matters:
+
+- better anti-bot posture for browser-driven scraping
+- improved compatibility with harder targets
+- no need to rely on Firecrawl’s cloud-only browser infrastructure
+- preserves the existing Firecrawl microservice pattern instead of replacing it with a completely different browser API
+
+This repo is therefore best thought of as:
+
+```txt
+Firecrawl API + Firecrawl worker model + CloakBrowser-backed browser service
+```
+
+rather than a stock upstream self-host.
 
 ---
 
@@ -59,7 +81,7 @@ Upstream documentation is still a useful baseline, but **this fork can diverge m
 The local compose stack currently includes:
 
 - Firecrawl API
-- Playwright-based browser microservice
+- CloakBrowser-backed browser microservice
 - Redis
 - RabbitMQ
 - NuQ Postgres
@@ -93,6 +115,14 @@ If your local patch set expects it, you may also use:
 IGNORE_ROBOTS_TXT=true
 ```
 
+If you use an upstream proxy:
+
+```bash
+PROXY_SERVER=http://host:port
+PROXY_USERNAME=username
+PROXY_PASSWORD=password
+```
+
 ### 3. Start the stack
 
 ```bash
@@ -119,17 +149,36 @@ curl --request POST \
 
 ---
 
+## What to expect
+
+This fork is optimized for people who are comfortable running their own scraping infrastructure and making deliberate tradeoffs.
+
+You should expect:
+
+- more local control
+- more divergence from upstream defaults
+- more willingness to favor successful scraping over conservative policy enforcement
+- more need to understand your own deployment
+
+You should **not** expect:
+
+- cloud parity with the official hosted product
+- official Firecrawl support
+- upstream compatibility guarantees for every rebase
+
+---
+
 ## Upstream relationship
 
 This repository is derived from the upstream Firecrawl project:
 
 - Upstream repo: <https://github.com/firecrawl/firecrawl>
-- Upstream license: see `LICENSE`
 - Upstream docs: <https://docs.firecrawl.dev>
+- Upstream hosted service: <https://firecrawl.dev>
 
 This fork should preserve required attribution and licensing notices from upstream.
 
-If you want the official product direction, official support, and cloud-only capabilities, upstream is the right source of truth.
+If you want the official product direction, official support, and cloud-only features, upstream is the right source of truth.
 
 ---
 
@@ -167,6 +216,7 @@ If you track upstream, expect occasional merge pain in areas such as:
 - `apps/api/src/controllers/auth.ts`
 - `apps/api/src/scraper/WebScraper/crawler.ts`
 - `apps/api/src/services/worker/scrape-worker.ts`
+- `apps/playwright-service-ts/*`
 - `docker-compose.yaml`
 
 Document local deltas clearly and keep them small where possible.
