@@ -1,0 +1,129 @@
+# searxng/settings.yml
+# use_default_settings: true
+use_default_settings:
+  engines:
+    remove:
+      - wikidata
+ui:
+  default_locale: ""
+
+server:
+  secret_key: "SFUSdnA5NQDuU4"
+  port: 8080
+  bind_address: "[::]"
+  image_proxy: false
+  method: "POST"
+  # 私有实例关闭限流，API 调用不会 429
+  limiter: false
+
+search:
+  safe_search: 0
+  # autocomplete: ""
+  formats:
+    - html
+    - json
+    - rss
+  max_page: 2
+  suspended_times:
+    SearxEngineAccessDenied: 86400
+    SearxEngineCaptcha: 86400
+    SearxEngineTooManyRequests: 3600
+    cf_SearxEngineCaptcha: 1296000
+    cf_SearxEngineAccessDenied: 86400
+    recaptcha_SearxEngineCaptcha: 604800
+
+
+outgoing:
+  request_timeout: 5.0
+  max_request_timeout: 15.0
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: true
+
+# 在顶层加：
+valkey:
+  url: "redis://1Panel-redis:6379/12"  # 用独立的 DB 编号
+
+# 学术
+default_doi_resolver: oadoi.org
+
+
+engines:
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: true
+    base_url: https://cn.bing.com  # for instances hosted in China
+
+  - name: bing images
+    engine: bing_images
+    shortcut: bii
+    base_url: https://cn.bing.com  # for instances hosted in China
+
+  - name: bing news
+    engine: bing_news
+    shortcut: bin
+    base_url: https://cn.bing.com  # for instances hosted in China
+
+  - name: bing videos
+    engine: bing_videos
+    shortcut: biv
+    base_url: https://cn.bing.com  # for instances hosted in China
+
+
+
+
+  - name: wikidata
+    disabled: true
+# engines:
+#   - name: google
+#     engine: google
+#     shortcut: go
+#     disabled: false
+
+#   - name: bing
+#     engine: bing
+#     shortcut: bicn
+#     base_url: "https://cn.bing.com/search"
+#     timeout: 10.0
+#     disabled: false
+
+#   - name: duckduckgo
+#     engine: duckduckgo
+#     shortcut: ddg
+#     disabled: false
+
+#   - name: brave
+#     engine: brave
+#     shortcut: br
+#     disabled: false
+
+#   - name: baidu
+#     engine: baidu
+#     shortcut: bd
+#     timeout: 10.0
+#     disabled: false
+
+
+  # - name: 360search
+  #   engine: 360search
+  #   shortcut: 360
+  #   timeout: 10.0
+  #   disabled: false
+
+  # - name: sogou
+  #   engine: sogou
+  #   shortcut: sg
+  #   timeout: 10.0
+  #   disabled: false
+
+  # - name: bing
+  #   engine: bing
+  #   shortcut: bi
+  #   disabled: false
+
+
+  # - name: wikipedia
+  #   engine: wikipedia
+  #   shortcut: wp
+  #   disabled: false

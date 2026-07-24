@@ -43,8 +43,28 @@ class InsecureConnectionError extends Error {
   }
 }
 
+// 配置 fakeip 范围（等同于公网地址，不应被 SSRF 拦截）
+const FAKE_IP_RANGES = [
+  { type: "IPv4", cidr: "28.0.0.0/8" },
+  { type: "IPv6", cidr: "fd00:bada:55ed::/64" },
+];
+
+function isInFakeIpRange(ip: string): boolean {
+  try {
+    const addr = IPAddr.parse(ip);
+    for (const range of FAKE_IP_RANGES) {
+      if (addr.kind() === range.type) {
+        if (addr.match(IPAddr.parseCIDR(range.cidr))) {
+          return true;
+        }
+      }
+    }
+  } catch { }
+  return false;
+}
+
 const isInternalHost = async (hostname: string): Promise<boolean> => {
-  const host = hostname.toLowerCase().replace(/\.$/, '');
+  const host = hostname.toLowerCase().replace(/\.$/, "");
   if (!host) return true;
 
   let addresses: string[];
@@ -59,7 +79,10 @@ const isInternalHost = async (hostname: string): Promise<boolean> => {
   }
   return (
     addresses.length === 0 ||
-    addresses.some((a) => IPAddr.parse(a).range() !== 'unicast')
+    addresses.every(
+      (a) =>
+        IPAddr.parse(a).range() !== "unicast" && !isInFakeIpRange(a)
+    )
   );
 };
 
@@ -187,11 +210,16 @@ let browser: Browser;
 
 const initializeBrowser = async () => {
   const { launch } = await import('cloakbrowser');
+
   browser = await launch({
     headless: true,
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
     proxy: `http://127.0.0.1:${ssrfProxyPort}`,
+    humanize: true,
+    geoip: true,
   });
+
+  console.log('[cloakbrowser] Stealth browser launched (humanize + geoip)');
 };
 
 const createContext = async (
@@ -201,7 +229,7 @@ const createContext = async (
   context: BrowserContext;
   securityState: ContextSecurityState;
 }> => {
-  const viewport = { width: 1280, height: 800 };
+  const viewport = { width: 1920, height: 1080 };
   const securityState: ContextSecurityState = {
     blockedNavigationRequestUrl: null,
   };
@@ -427,8 +455,8 @@ app.post('/scrape', async (req: Request, res: Response) => {
   try {
     const userAgentOverride = headers
       ? Object.entries(headers).find(
-          ([k]) => k.toLowerCase() === 'user-agent',
-        )?.[1]
+        ([k]) => k.toLowerCase() === 'user-agent',
+      )?.[1]
       : undefined;
 
     const contextBundle = await createContext(

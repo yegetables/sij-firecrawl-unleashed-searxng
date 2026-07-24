@@ -1,9 +1,6 @@
-name: firecrawl
+# name: firecrawl
 
 x-common-service: &common-service
-  # NOTE: If you don't want to build the service locally,
-  # comment out the build: statement and uncomment the image: statement
-  # image: ghcr.io/firecrawl/firecrawl
   build: apps/api
 
   ulimits:
@@ -11,7 +8,7 @@ x-common-service: &common-service
       soft: 65535
       hard: 65535
   networks:
-    - backend
+    - 1panel-network
   extra_hosts:
     - "host.docker.internal:host-gateway"
   logging:
@@ -22,16 +19,16 @@ x-common-service: &common-service
       compress: "true"
 
 x-common-env: &common-env
-  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-  REDIS_RATE_LIMIT_URL: ${REDIS_URL:-redis://redis:6379}
-  PLAYWRIGHT_MICROSERVICE_URL: ${PLAYWRIGHT_MICROSERVICE_URL:-http://playwright-service:3000/scrape}
+  REDIS_URL: ${REDIS_URL:-redis://1Panel-redis:6379/11}
+  REDIS_RATE_LIMIT_URL: ${REDIS_URL:-redis://1Panel-redis:6379/11}
+  PLAYWRIGHT_MICROSERVICE_URL: ${PLAYWRIGHT_MICROSERVICE_URL:-http://firecrawl-playwright-service:3000/scrape}
   POSTGRES_USER: ${POSTGRES_USER:-postgres}
   POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
   POSTGRES_DB: ${POSTGRES_DB:-postgres}
-  POSTGRES_HOST: ${POSTGRES_HOST:-nuq-postgres}
+  POSTGRES_HOST: ${POSTGRES_HOST:-firecrawl-nuq-postgres}
   POSTGRES_PORT: ${POSTGRES_PORT:-5432}
   USE_DB_AUTHENTICATION: ${USE_DB_AUTHENTICATION:-false}
-  IGNORE_ROBOTS_TXT: ${IGNORE_ROBOTS_TXT}
+  IGNORE_ROBOTS_TXT: ${IGNORE_ROBOTS_TXT:-true}
   NUM_WORKERS_PER_QUEUE: ${NUM_WORKERS_PER_QUEUE:-8}
   CRAWL_CONCURRENT_REQUESTS: ${CRAWL_CONCURRENT_REQUESTS:-10}
   MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-5}
@@ -53,20 +50,23 @@ x-common-env: &common-env
   PROXY_SERVER: ${PROXY_SERVER}
   PROXY_USERNAME: ${PROXY_USERNAME}
   PROXY_PASSWORD: ${PROXY_PASSWORD}
-  SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT}
+  # ═══ 新增：SearXNG 搜索后端 ═══
+  SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT:-http://searxng:8080}
   SEARXNG_ENGINES: ${SEARXNG_ENGINES}
   SEARXNG_CATEGORIES: ${SEARXNG_CATEGORIES}
-  # Set NUQ_BACKEND=fdb to run the queue on FoundationDB instead of Postgres
+  # SEARXNG_ENGINES: ${SEARXNG_ENGINES:-google,bing,baidu}
+  # SEARXNG_CATEGORIES: ${SEARXNG_CATEGORIES:-general}
   NUQ_BACKEND: ${NUQ_BACKEND}
   FDB_CLUSTER_FILE: ${NUQ_BACKEND:+/var/fdb/fdb.cluster}
 
 services:
-  firecrawl-ui:
-    image: obeoneorg/firecrawl-ui:latest   # or ghcr.io/obeone/firecrawl-ui:latest
+  firecrawl-ui:  # 非必需：Web 管理界面，纯 API 使用可注释掉
+    image: obeoneorg/firecrawl-ui:latest
+    container_name: firecrawl-ui
     ports:
-      - "8080:8080"
+      - "48280:8080"
     networks:
-      - backend
+      - 1panel-network
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -75,12 +75,31 @@ services:
         max-file: "2"
         compress: "true"
 
-  playwright-service:
-    # NOTE: If you don't want to build the service locally,
-    # comment out the build: statement and uncomment the image: statement
+  # ═══ 新增：SearXNG 元搜索引擎 ═══
+  searxng:
+    image: searxng/searxng:latest
+    volumes:
+      - ./searxng:/etc/searxng:ro
+    environment:
+      - INSTANCE_NAME=searxng
+      - BASE_URL=http://localhost:8080/
+    ports:
+      - "14820:8080"
+    networks:
+      - 1panel-network
+    restart: unless-stopped
+    container_name: searxng
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  firecrawl-playwright-service:
     build: apps/playwright-service-ts
-    # image: ghcr.io/firecrawl/playwright-service:latest
-    # image: loorisr/patchright-scrape-api
+    volumes:
+      - ./.cloakbrowser:/root/.cloakbrowser
+    container_name: firecrawl-playwright-service
     environment:
       PORT: 3000
       PROXY_SERVER: ${PROXY_SERVER}
@@ -91,11 +110,10 @@ services:
       # Configure maximum concurrent pages for Playwright browser instances
       MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-10}
     networks:
-      - backend
-    # Resource limits for Docker Compose (not Swarm)
-    cpus: 2.0
-    mem_limit: 4G
-    memswap_limit: 4G
+      - 1panel-network
+    cpus: 1.0
+    mem_limit: 2G
+    memswap_limit: 2G
     logging:
       driver: "json-file"
       options:
@@ -105,7 +123,8 @@ services:
     tmpfs:
       - /tmp/.cache:noexec,nosuid,size=1g
 
-  api:
+  firecrawl-api:
+    container_name: firecrawl-api
     <<: *common-service
     environment:
       <<: *common-env
@@ -113,73 +132,31 @@ services:
       PORT: ${INTERNAL_PORT:-3002}
       EXTRACT_WORKER_PORT: ${EXTRACT_WORKER_PORT:-3004}
       WORKER_PORT: ${WORKER_PORT:-3005}
-      NUQ_RABBITMQ_URL: amqp://rabbitmq:5672
+      NUQ_RABBITMQ_URL: amqp://rabbitmq:rabbitmq@rabbitmq:5672
       HARNESS_STARTUP_TIMEOUT_MS: ${HARNESS_STARTUP_TIMEOUT_MS:-60000}
       ENV: local
     depends_on:
-      redis:
+      firecrawl-playwright-service:
         condition: service_started
-      playwright-service:
-        condition: service_started
-      rabbitmq:
+      # ═══ 新增：确保 SearXNG 先启动 ═══
+      searxng:
         condition: service_healthy
     ports:
-      - "${PORT:-3002}:${INTERNAL_PORT:-3002}"
-    volumes:
-      - fdb-cluster-file:/var/fdb:ro
+      - "${PORT:-53002}:${INTERNAL_PORT:-3002}"
     command: node dist/src/harness.js --start-docker
-    # Resource limits for Docker Compose (not Swarm)
-    # Increase if you have more CPU cores/RAM available
-    cpus: 4.0
-    mem_limit: 8G
-    memswap_limit: 8G
+    cpus: 2.0
+    mem_limit: 4G
+    memswap_limit: 4G
 
-  redis:
-    # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
-    # uncomment the Valkey statement and comment out the Redis statement.
-    # Using Valkey with Firecrawl is untested and not guaranteed to work. Use with caution.
-    image: redis:alpine
-    # image: valkey/valkey:alpine
-
-    networks:
-      - backend
-    command: redis-server --bind 0.0.0.0
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-        compress: "true"
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    networks:
-      - backend
-    command: rabbitmq-server
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
-      interval: 5s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-        compress: "true"
-
-  nuq-postgres:
-    # NOTE: If you don't want to build the image locally,
-    # comment out the build: statement and uncomment the image: statement
-    # image: ghcr.io/firecrawl/nuq-postgres:latest
+  firecrawl-nuq-postgres:
+    container_name: firecrawl-nuq-postgres
     build: apps/nuq-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
     networks:
-      - backend
+      - 1panel-network
     logging:
       driver: "json-file"
       options:
@@ -187,45 +164,7 @@ services:
         max-file: "3"
         compress: "true"
 
-  # FoundationDB queue backend (experimental). Enable by setting
-  # NUQ_BACKEND=fdb; the api container reads the shared cluster file from the
-  # fdb-cluster-file volume. Replaces nuq-postgres once stable.
-  foundationdb:
-    image: foundationdb/foundationdb:7.3.63
-    environment:
-      FDB_NETWORKING_MODE: container
-      FDB_COORDINATOR_PORT: 4500
-    networks:
-      - backend
-    volumes:
-      - fdb-data:/var/fdb/data
-      - fdb-cluster-file:/var/fdb
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        compress: "true"
-
-  # one-shot: creates the database on first boot (no-op afterwards)
-  foundationdb-init:
-    image: foundationdb/foundationdb:7.3.63
-    depends_on:
-      - foundationdb
-    entrypoint:
-      - /bin/bash
-      - -c
-      - "sleep 5 && out=$(fdbcli -C /var/fdb/fdb.cluster --exec 'configure new single ssd' 2>&1); status=$$?; printf '%s\n' \"$$out\"; if [ \"$$status\" -eq 0 ]; then exit 0; fi; printf '%s\n' \"$$out\" | grep -Eiq 'already.*configured|database.*configured'"
-    volumes:
-      - fdb-cluster-file:/var/fdb
-    networks:
-      - backend
-    restart: "no"
 
 networks:
-  backend:
-    driver: bridge
-
-volumes:
-  fdb-data:
-  fdb-cluster-file:
+    1panel-network:
+        external: true
