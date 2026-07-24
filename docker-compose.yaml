@@ -97,8 +97,8 @@ services:
 
   firecrawl-playwright-service:
     build: apps/playwright-service-ts
-    volumes:
-      - ./.cloakbrowser:/root/.cloakbrowser
+    # volumes:
+    #   - ./.cloakbrowser:/root/.cloakbrowser
     container_name: firecrawl-playwright-service
     environment:
       PORT: 3000
