@@ -9,6 +9,8 @@
 >
 > If you want the official managed product, cloud-only capabilities, or upstream support guarantees, use the upstream project at [`firecrawl/firecrawl`](https://github.com/firecrawl/firecrawl) and the hosted service at [firecrawl.dev](https://firecrawl.dev).
 
+
+# upstream: https://sij.ai/sij/firecrawl-unleashed
 ---
 
 ## What this repo is
