@@ -1,6 +1,9 @@
 # Build stage
 FROM golang:1.23-alpine AS builder
 
+# Set Go module proxy to Aliyun mirror
+ENV GOPROXY=https://goproxy.cn,direct
+
 # Install build dependencies
 RUN apk add --no-cache git
 

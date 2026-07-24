@@ -9,6 +9,8 @@ RUN corepack enable
 
 # Build Go shared library
 FROM golang:1.24 AS go-build
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOPRIVATE=github.com/firecrawl/*
 WORKDIR /app
 COPY sharedLibs/go-html-to-md ./sharedLibs/go-html-to-md
 
@@ -18,6 +20,9 @@ RUN cd sharedLibs/go-html-to-md && \
 
 FROM base AS build
 WORKDIR /app
+
+# Replace apt source with Aliyun mirror
+RUN sed -i 's|http://deb.debian.org|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -33,15 +38,20 @@ ARG FDB_VERSION=7.3.63
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in arm64) FDB_ARCH=aarch64 ;; *) FDB_ARCH=$ARCH ;; esac && \
     curl -fsSL -o /tmp/fdb-clients.deb \
-      "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" && \
+      "https://gh-proxy.com/https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" && \
     dpkg -i /tmp/fdb-clients.deb && rm /tmp/fdb-clients.deb
 
-# Install Rust
+# Install Rust with rsproxy.cn mirror
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
+    RUSTUP_DIST_SERVER=https://rsproxy.cn \
+    RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup \
     PATH=/usr/local/cargo/bin:$PATH
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path \
+RUN curl --proto '=https' --tlsv1.2 -sSf -o /tmp/rustup-init https://rsproxy.cn/rustup/dist/x86_64-unknown-linux-gnu/rustup-init \
+    && chmod +x /tmp/rustup-init \
+    && /tmp/rustup-init -y --no-modify-path \
+    && rm /tmp/rustup-init \
     && chmod -R a+w $RUSTUP_HOME $CARGO_HOME
 
 # Copy dependency inputs. The native workspace is included here because its
@@ -72,6 +82,9 @@ RUN pnpm prune --prod --ignore-scripts
 # Runtime stage
 FROM base AS runtime
 
+# Replace apt source with Aliyun mirror
+RUN sed -i 's|http://deb.debian.org|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
+
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     git \
@@ -84,7 +97,7 @@ ARG FDB_VERSION=7.3.63
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in arm64) FDB_ARCH=aarch64 ;; *) FDB_ARCH=$ARCH ;; esac && \
     curl -fsSL -o /tmp/fdb-clients.deb \
-      "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" && \
+      "https://gh-proxy.com/https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients_${FDB_VERSION}-1_${FDB_ARCH}.deb" && \
     dpkg -i /tmp/fdb-clients.deb && rm /tmp/fdb-clients.deb
 
 EXPOSE 8080

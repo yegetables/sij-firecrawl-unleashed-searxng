@@ -3,6 +3,9 @@
 ARG PG_MAJOR=17
 FROM postgres:${PG_MAJOR}
 
+# Replace apt source with Aliyun mirror
+RUN sed -i 's|http://deb.debian.org|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
+
 # Install pg_cron for the specified Postgres major version
 RUN set -eux; \
     apt-get update; \
