@@ -2,7 +2,8 @@ FROM node:20-slim
 
 WORKDIR /usr/src/app
 COPY package*.json ./
-RUN npm install && npm install cloakbrowser@latest
+RUN npm install && npm install cloakbrowser@latest && \
+    chmod +x /root/.cloakbrowser/chromium-*/chrome_crashpad_handler /root/.cloakbrowser/chromium-*/chromedriver
 
 COPY . .
 
